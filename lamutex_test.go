@@ -1,6 +1,7 @@
 package lamutex
 
 import (
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -9,7 +10,7 @@ import (
 func TestLockTwoTimes(t *testing.T) {
 	var r bool
 
-	m := New(10)
+	m := New()
 
 	r = m.Lock()
 	if r != true {
@@ -25,7 +26,7 @@ func TestLockTwoTimes(t *testing.T) {
 }
 
 func TestLockConcurrentlyTightly(t *testing.T) {
-	m := New(3)
+	m := New()
 
 	num := 10
 	wg := new(sync.WaitGroup)
@@ -50,7 +51,7 @@ func TestLockConcurrentlyTightly(t *testing.T) {
 }
 
 func TestLockConcurrently(t *testing.T) {
-	m := New(10)
+	m := New()
 
 	wg := new(sync.WaitGroup)
 	wg.Add(3)
@@ -86,4 +87,41 @@ func TestLockConcurrently(t *testing.T) {
 	m.Unlock(false)
 
 	wg.Wait()
+}
+
+func TestLockConcurrently100000(t *testing.T) {
+	m := New()
+
+	n := 100000
+	rand.Seed(time.Now().Unix())
+	wg := new(sync.WaitGroup)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			time.Sleep(time.Millisecond * time.Duration(rand.Int31n(10000)))
+			t.Logf("Taking lock #%d\n", i)
+			r := m.Lock()
+			if r != true {
+				t.Logf("Ahead failed #%d\n", i)
+			} else {
+				t.Logf("Locking #%d\n", i)
+				time.Sleep(time.Millisecond * time.Duration(rand.Int31n(1000)))
+				report := rand.Int31n(10) < 8
+				t.Logf("Releasing with %t #%d\n", report, i)
+				m.Unlock(report)
+			}
+		}(i)
+	}
+
+	time.Sleep(time.Second * 1)
+
+	wg.Wait()
+
+	if len(m.m) != 1 {
+		t.Errorf("Inconsistent count")
+	}
+	if m.num != 0 {
+		t.Errorf("Inconsistent count")
+	}
 }
